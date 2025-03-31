@@ -3,12 +3,26 @@ const contentManager = {
     // 모든 섹션 데이터를 저장할 객체
     sectionsData: {},
     
-    // GitHub Pages baseURL 설정
-    baseURL: window.location.pathname.includes('/hi-learning') ? '/hi-learning/' : '/',
+    // baseURL 설정 - 로컬 개발용 루트 경로로 설정
+    baseURL: '',
+    
+    // TXT 파일 로딩 캐시
+    contentCache: {},
     
     // 초기화 함수
     init: async function() {
         try {
+            // 콘솔에 디버그 메시지 추가
+            console.log('콘텐츠 관리자 초기화 시작...');
+            console.log('현재 경로:', window.location.pathname);
+            
+            // baseURL 설정 (GitHub Pages와 로컬 환경 모두 지원)
+            this.baseURL = window.location.pathname.includes('/hi-learning') 
+                ? '/hi-learning/' 
+                : '/';
+            
+            console.log('설정된 baseURL:', this.baseURL);
+            
             // 모든 섹션 데이터 로드
             await this.loadAllSectionsData();
             console.log('모든 섹션 데이터 로드 완료');
@@ -23,19 +37,57 @@ const contentManager = {
     // 모든 섹션 데이터 로드
     loadAllSectionsData: async function() {
         const sections = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
+        let loadedCount = 0;
         
         for (const section of sections) {
             try {
-                // GitHub Pages에서의 절대 경로 사용
-                const response = await fetch(`${this.baseURL}content_web/${section}/section_data.json`);
+                // 상대 경로 사용
+                const sectionPath = `content_web/${section}/section_data.json`;
+                console.log(`섹션 데이터 로드 시도: ${sectionPath}`);
+                
+                const response = await fetch(sectionPath);
                 if (!response.ok) {
                     throw new Error(`섹션 ${section} 데이터 로드 실패: ${response.status}`);
                 }
                 
                 const data = await response.json();
                 this.sectionsData[section] = data;
+                
+                // 텍스트 파일 참조가 있으면 미리 로드
+                await this.preloadTextContent(section, data);
+                
+                loadedCount++;
+                console.log(`섹션 ${section} 데이터 로드 성공 (${loadedCount}/${sections.length})`);
             } catch (error) {
                 console.error(`섹션 ${section} 데이터 로드 오류:`, error);
+            }
+        }
+    },
+    
+    // 텍스트 콘텐츠 사전 로드
+    preloadTextContent: async function(sectionId, sectionData) {
+        if (!sectionData || !sectionData.subsections) return;
+        
+        for (const subsection of sectionData.subsections) {
+            // 콘텐츠 경로에 .txt 확장자가 있는지 확인
+            if (typeof subsection.content === 'string' && subsection.content.includes('.txt')) {
+                try {
+                    const txtPath = `content_web/${sectionId}/${subsection.content}`;
+                    console.log(`텍스트 파일 로드 시도: ${txtPath}`);
+                    
+                    const response = await fetch(txtPath);
+                    if (!response.ok) {
+                        throw new Error(`텍스트 파일 로드 실패: ${response.status}`);
+                    }
+                    
+                    const content = await response.text();
+                    this.contentCache[txtPath] = content;
+                    subsection.content = content; // 직접 콘텐츠로 대체
+                    
+                    console.log(`텍스트 파일 로드 성공: ${txtPath}`);
+                } catch (error) {
+                    console.error(`텍스트 파일 로드 오류:`, error);
+                }
             }
         }
     },
@@ -173,22 +225,33 @@ const contentManager = {
         const contentDiv = document.createElement('div');
         contentDiv.className = 'subsection-content';
         
-        // 내용 처리 (특수 문자와 줄바꿈 처리 개선)
-        const contentText = subsection.content
-            .replace(/\s+/g, ' ')  // 연속된 공백을 하나로 통일
-            .replace(/\\n/g, '<br>')  // 이스케이프된 줄바꿈 처리
-            .replace(/\n/g, '<br>');  // 일반 줄바꿈 처리
+        // 내용이 없거나 빈 문자열이면 처리
+        let contentText = '내용이 없습니다.';
+        
+        if (subsection.content) {
+            // 내용 처리 (특수 문자와 줄바꿈 처리 개선)
+            contentText = subsection.content
+                .replace(/\s+/g, ' ')  // 연속된 공백을 하나로 통일
+                .replace(/\\n/g, '<br>')  // 이스케이프된 줄바꿈 처리
+                .replace(/\n/g, '<br>');  // 일반 줄바꿈 처리
+        }
         
         // 이미지 갤러리 생성
         let imagesHtml = '';
         if (subsection.images && subsection.images.length > 0) {
             imagesHtml = '<div class="image-gallery">';
             subsection.images.forEach(image => {
-                // 이미지 경로 처리 개선
-                const imageUrl = image.startsWith('http') ? image : `${this.baseURL}${image}`;
+                // 이미지 경로 처리 개선 - 상대 경로 유지
+                let imageUrl = image;
+                if (!image.startsWith('http') && !image.startsWith('/')) {
+                    imageUrl = image; // 상대 경로 유지
+                }
+                
+                console.log('이미지 로드 시도:', imageUrl);
+                
                 imagesHtml += `
                     <div class="gallery-item">
-                        <img src="${imageUrl}" alt="${subsection.title}" loading="lazy" onclick="openModal(this.src)">
+                        <img src="${imageUrl}" alt="${subsection.title}" loading="lazy" onerror="this.onerror=null; this.src='images_web/error.png'; console.error('이미지 로드 실패:',this.src);" onclick="openModal(this.src)">
                     </div>
                 `;
             });
@@ -208,7 +271,8 @@ const contentManager = {
             sectionId,
             subsectionNumber,
             contentLength: contentText.length,
-            imagesCount: subsection.images?.length || 0
+            imagesCount: subsection.images?.length || 0,
+            imageURLs: subsection.images
         });
     }
 };
