@@ -3,6 +3,9 @@ const contentManager = {
     // 모든 섹션 데이터를 저장할 객체
     sectionsData: {},
     
+    // GitHub Pages baseURL 설정
+    baseURL: window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/',
+    
     // 초기화 함수
     init: async function() {
         try {
@@ -23,7 +26,8 @@ const contentManager = {
         
         for (const section of sections) {
             try {
-                const response = await fetch(`content_web/${section}/section_data.json`);
+                // GitHub Pages에서의 절대 경로 사용
+                const response = await fetch(new URL(`content_web/${section}/section_data.json`, window.location.href).href);
                 if (!response.ok) {
                     throw new Error(`섹션 ${section} 데이터 로드 실패: ${response.status}`);
                 }
@@ -177,9 +181,11 @@ const contentManager = {
         if (subsection.images && subsection.images.length > 0) {
             imagesHtml = '<div class="image-gallery">';
             subsection.images.forEach(image => {
+                // GitHub Pages에서의 절대 경로 사용
+                const imageUrl = new URL(image, window.location.href).href;
                 imagesHtml += `
                     <div class="gallery-item">
-                        <img src="${image}" alt="${subsection.title}" onclick="openModal(this.src)">
+                        <img src="${imageUrl}" alt="${subsection.title}" onclick="openModal(this.src)">
                     </div>
                 `;
             });
