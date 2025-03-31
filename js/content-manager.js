@@ -173,19 +173,22 @@ const contentManager = {
         const contentDiv = document.createElement('div');
         contentDiv.className = 'subsection-content';
         
-        // 내용 처리 (줄바꿈 유지)
-        const contentText = subsection.content.replace(/\n/g, '<br>');
+        // 내용 처리 (특수 문자와 줄바꿈 처리 개선)
+        const contentText = subsection.content
+            .replace(/\s+/g, ' ')  // 연속된 공백을 하나로 통일
+            .replace(/\\n/g, '<br>')  // 이스케이프된 줄바꿈 처리
+            .replace(/\n/g, '<br>');  // 일반 줄바꿈 처리
         
         // 이미지 갤러리 생성
         let imagesHtml = '';
         if (subsection.images && subsection.images.length > 0) {
             imagesHtml = '<div class="image-gallery">';
             subsection.images.forEach(image => {
-                // GitHub Pages에서의 절대 경로 사용
-                const imageUrl = `${this.baseURL}${image}`;
+                // 이미지 경로 처리 개선
+                const imageUrl = image.startsWith('http') ? image : `${this.baseURL}${image}`;
                 imagesHtml += `
                     <div class="gallery-item">
-                        <img src="${imageUrl}" alt="${subsection.title}" onclick="openModal(this.src)">
+                        <img src="${imageUrl}" alt="${subsection.title}" loading="lazy" onclick="openModal(this.src)">
                     </div>
                 `;
             });
@@ -199,6 +202,14 @@ const contentManager = {
         `;
         
         subsectionContainer.appendChild(contentDiv);
+        
+        // 콘솔에 디버그 정보 출력
+        console.log('섹션 데이터 로드됨:', {
+            sectionId,
+            subsectionNumber,
+            contentLength: contentText.length,
+            imagesCount: subsection.images?.length || 0
+        });
     }
 };
 
